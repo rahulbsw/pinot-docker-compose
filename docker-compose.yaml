@@ -1,0 +1,70 @@
+version: '3.7'
+services:
+  zookeeper:
+    image: zookeeper:3.5.9
+    hostname: zookeeper
+    container_name: manual-zookeeper
+    ports:
+      - "2181:2181"
+      - "18080:8080"
+    volumes:
+      - "./zookeeper/log:/log:rw"
+      - "./zookeeper/data:/data:rw"  
+      - "./zookeeper/datalog:/datalog:rw"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+  kafka:
+    image: wurstmeister/kafka:latest
+    hostname: kafka    
+    container_name: manual-kafka
+    environment:
+      KAFKA_ZOOKEEPER_CONNECT: manual-zookeeper:2181/kafka
+      KAFKA_BROKER_ID: 0
+      KAFKA_ADVERTISED_HOST_NAME: kafka
+    ports:
+      - "9092:9092"
+    volumes:
+      - "./kafka/data:/kafka:rw"      
+    depends_on:
+      - zookeeper
+  pinot-controller:
+    image: apachepinot/pinot:latest
+    command: "StartController -zkAddress manual-zookeeper:2181"
+    container_name: "manual-pinot-controller"
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+    volumes:
+      - "./controller/configs:/opt/pinot/configs:rw"
+      - "./controller/data:/opt/pinot/data:rw"
+    environment:
+      JAVA_OPTS: "-Dplugins.dir=/opt/pinot/plugins -Xms1G -Xmx4G -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Xloggc:gc-pinot-controller.log"
+    depends_on:
+      - zookeeper
+  pinot-broker:
+    image: apachepinot/pinot:latest
+    command: "StartBroker -zkAddress manual-zookeeper:2181"
+    restart: unless-stopped
+    container_name: "manual-pinot-broker"
+    ports:
+      - "8099:8099"
+    volumes:
+      - "./broker/configs:/opt/pinot/configs:rw"
+      - "./broker/data:/opt/pinot/data:rw"  
+    environment:
+      JAVA_OPTS: "-Dplugins.dir=/opt/pinot/plugins -Xms4G -Xmx4G -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Xloggc:gc-pinot-broker.log"
+    depends_on:
+      - pinot-controller
+  pinot-server:
+    image: apachepinot/pinot:latest
+    command: "StartServer -zkAddress manual-zookeeper:2181"
+    restart: unless-stopped
+    container_name: "manual-pinot-server"
+    volumes:
+      - "./server/configs:/opt/pinot/configs:rw"
+      - "./server/data:/opt/pinot/data:rw"  
+    environment:
+      JAVA_OPTS: "-Dplugins.dir=/opt/pinot/plugins -Xms4G -Xmx16G -XX:+UseG1GC -XX:MaxGCPauseMillis=200 -Xloggc:gc-pinot-server.log"
+    depends_on:
+      - pinot-broker
